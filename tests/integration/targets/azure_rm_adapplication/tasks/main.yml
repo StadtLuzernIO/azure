@@ -1,6 +1,6 @@
 - name: Set variables
   ansible.builtin.set_fact:
-    display_name: "test_app_{{ resource_group | hash('sha1') | truncate(20, True, '') }}"
+    display_name: "test_app_{{ 999999999999999999994 | random | to_uuid }}"
   run_once: true
 
 - name: Create application
@@ -15,6 +15,7 @@
 - name: Create application by app_id again idempotent test
   azure_rm_adapplication:
     app_id: "{{ create_output.app_id }}"
+    display_name: "{{ display_name }}"
   register: output_app_id
 
 - name: Assert application by app_id the idempotent success
@@ -23,7 +24,7 @@
 
 - name: Create application by display_name again idempotent test
   azure_rm_adapplication:
-    app_id: "{{ create_output.display_name }}"
+    display_name: "{{ create_output.display_name }}"
   register: output_display_name
 
 - name: Assert application by display_name the idempotent success
