@@ -529,6 +529,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
 
         response = self.get_resource()
         if response:
+            self.app_id = response['object_id']
             if self.state == 'present':
                 if self.check_update(response):
                     self.update_resource(response)
@@ -647,9 +648,14 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
             if self.app_id:
                 ret = asyncio.get_event_loop().run_until_complete(self.get_application_by_app_id(self.app_id))
                 existing_apps = ret.value
-
+            else:
+                ret = asyncio.get_event_loop().run_until_complete(self.get_application_by_display_name(self.display_name))
+                existing_apps = ret.value       
             if not existing_apps:
                 return False
+            if len(existing_apps) > 1:
+                self.fail("Multiple objects found: This display_name is not unique.")
+        
             result = existing_apps[0]
             return self.to_dict(result)
         except Exception as ge:
@@ -772,6 +778,12 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
         request_configuration = ApplicationsRequestBuilder.ApplicationsRequestBuilderGetRequestConfiguration(
             query_parameters=ApplicationsRequestBuilder.ApplicationsRequestBuilderGetQueryParameters(
                 filter=(" appId eq '{0}'".format(app_id)), ),
+        )
+
+    async def get_application_by_display_name(self, display_name):
+        request_configuration = ApplicationsRequestBuilder.ApplicationsRequestBuilderGetRequestConfiguration(
+            query_parameters=ApplicationsRequestBuilder.ApplicationsRequestBuilderGetQueryParameters(
+                filter=(" displayName eq '{0}'".format(display_name)), ),
         )
 
         return await self._client.applications.get(request_configuration=request_configuration)
