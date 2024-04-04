@@ -24,7 +24,7 @@
 
 - name: Create application by display_name again idempotent test
   azure_rm_adapplication:
-    display_name: "{{ create_output.display_name }}"
+    display_name: "{{ display_name }}"
   register: output_display_name
 
 - name: Assert application by display_name the idempotent success
