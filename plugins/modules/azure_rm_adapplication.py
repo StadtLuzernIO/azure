@@ -649,12 +649,12 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
                 existing_apps = ret.value
             else:
                 ret = asyncio.get_event_loop().run_until_complete(self.get_application_by_display_name(self.display_name))
-                existing_apps = ret.value       
+                existing_apps = ret.value
             if not existing_apps:
                 return False
             if len(existing_apps) > 1:
                 self.fail("Multiple objects found: This display_name is not unique.")
-        
+
             result = existing_apps[0]
             return self.to_dict(result)
         except Exception as ge:
@@ -748,8 +748,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
             required_resource_accesses = required_resource_accesses.get('required_resource_access', [])
         for x in required_resource_accesses:
             accesses = [ResourceAccess(id=y['id'], type=y['type']) for y in x['resource_access']]
-            required_accesses.append(RequiredResourceAccess(resource_app_id=x['resource_app_id'],
-                                                            resource_access=accesses))
+            required_accesses.append(RequiredResourceAccess(resource_app_id=x['resource_app_id'], resource_access=accesses))
         return required_accesses
 
     def build_app_roles(self, app_roles):
@@ -779,7 +778,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
                 filter=(" appId eq '{0}'".format(app_id)), ),
         )
         return await self._client.applications.get(request_configuration=request_configuration)
-    
+
     async def get_application_by_display_name(self, display_name):
         request_configuration = ApplicationsRequestBuilder.ApplicationsRequestBuilderGetRequestConfiguration(
             query_parameters=ApplicationsRequestBuilder.ApplicationsRequestBuilderGetQueryParameters(
@@ -789,6 +788,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
 
     async def delete_application(self, obj_id):
         await self._client.applications.by_application_id(obj_id).delete()
+
 
 def main():
     AzureRMADApplication()
