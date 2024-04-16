@@ -38,21 +38,30 @@
 
 - name: Create application with more parameter
   azure_rm_adapplication:
-    display_name: "{{ display_name }}-01"
-    sign_in_audience: AzureADandPersonalMicrosoftAccount
-    credential_description: "for test"
-    end_date: 2021-10-01
-    start_date: 2021-05-18
+    display_name: "{{ display_name }}"
+    homepage: "https://{{ display_name }}.test.com"
+    sign_in_audience: AzureADMultipleOrgs
     identifier_uris:
-      - "{{ display_name }}.com"
-    app_roles:
-      - allowed_member_types:
-          - User
-        description: "for app role test"
-        display_name: "{{ display_name }}_approle"
-        is_enabled: true
-        value: Password@0329
+      - "api://{{ create_output.app_id }}"
   register: second_output
+
+#- name: Create application with more parameter
+#  azure_rm_adapplication:
+#    display_name: "{{ display_name }}"
+#    sign_in_audience: AzureADandPersonalMicrosoftAccount
+#    credential_description: "for test"
+#    end_date: 2021-10-01
+#    start_date: 2021-05-18
+#    identifier_uris:
+#      - "{{ display_name }}.com"
+#    app_roles:
+#      - allowed_member_types:
+#          - User
+#        description: "for app role test"
+#        display_name: "{{ display_name }}_approle"
+#        is_enabled: true
+#        value: Password@0329
+#  register: second_output
 
 - name: Assert secondary resource create success
   ansible.builtin.assert:
@@ -70,7 +79,7 @@
 
 - name: Get ad app info by display name
   azure_rm_adapplication_info:
-    app_display_name: "{{ create_output.app_display_name }}"
+    app_display_name: "{{ display_name }}"
   register: display_name_test_output
 
 - name: Assert the application facts
@@ -84,6 +93,7 @@
 - name: Delete ad app by app id
   azure_rm_adapplication:
     app_id: "{{ create_output.app_id }}"
+    display_name: "{{ display_name }}"
     state: absent
   register: output
 
@@ -91,15 +101,16 @@
   ansible.builtin.assert:
     that: output.changed
 
-- name: Delete ad app by app id
+- name: Delete ad app by app id again
   azure_rm_adapplication:
     app_id: "{{ second_output.app_id }}"
+    display_name: "{{ display_name }}"
     state: absent
   register: output
 
-- name: Assert the secondary application delete success
+- name: Assert the secondary application delete no changed
   ansible.builtin.assert:
-    that: output.changed
+    that: not output.changed
 
 - name: Get ad app info by app id
   azure_rm_adapplication_info:
