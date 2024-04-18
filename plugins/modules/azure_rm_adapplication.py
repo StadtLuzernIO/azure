@@ -55,6 +55,11 @@ options:
                 description:
                     - Display name for the permission that appears in the app role assignment and consent experiences.
                 type: str
+            id:
+                description:
+                    - Unique role identifier inside the appRoles collection. When creating a new app role, a new GUID identifier must be provided.
+                type: str
+                default: random UUID
             is_enabled:
                 description:
                     - When creating or updating an app role, this must be set to true (which is the default).
@@ -412,6 +417,9 @@ app_role_spec = dict(
     display_name=dict(
         type='str'
     ),
+    id=dict(
+        type='str'
+    ),
     is_enabled=dict(
         type='bool'
     ),
@@ -757,10 +765,10 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
             self.log('Getting "appRoles" from a full manifest')
             app_roles = app_roles.get('appRoles', [])
         for x in app_roles:
-            role = AppRole(id=uuid.uuid4(),
+            role = AppRole(id= x.get('id', None) or uuid.uuid4(),
                            allowed_member_types=x.get('allowed_member_types', None),
                            description=x.get('description', None), display_name=x.get('display_name', None),
-                           is_enabled=x.get('is_enabled', None), value=x.get('value', None))  # value ? additional_data
+                           is_enabled=x.get('is_enabled', None), value=x.get('value', None))
             result.append(role)
         return result
 
