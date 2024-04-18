@@ -383,6 +383,7 @@ try:
     import dateutil.parser
     import uuid
     import asyncio
+    from uuid import UUID
     from dateutil.relativedelta import relativedelta
     from msgraph.generated.applications.applications_request_builder import ApplicationsRequestBuilder
     from msgraph.generated.models.application import Application
@@ -672,7 +673,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
 
     def to_dict(self, object):
         app_roles = [{
-            'id': app_role.id,
+            'id': str(app_role.id),
             'display_name': app_role.display_name,
             'is_enabled': app_role.is_enabled,
             'value': app_role.value,
@@ -721,11 +722,11 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
         key_creds = None
         if password:
             password_creds = [PasswordCredential(start_date_time=start_date, end_date_time=end_date,
-                                                 key_id=self.gen_guid(), secret_text=password,
+                                                 key_id=uuid.uuid4(), secret_text=password,
                                                  custom_key_identifier=custom_key_id)]  # value ? secret_text
         elif key_value:
             key_creds = [
-                KeyCredential(start_date_time=start_date, end_date_time=end_date, key_id=self.gen_guid(), key=key_value,
+                KeyCredential(start_date_time=start_date, end_date_time=end_date, key_id=uuid.uuid4(), key=key_value,
                               # value ? key
                               usage=key_usage, type=key_type, custom_key_identifier=custom_key_id)]
 
@@ -735,9 +736,6 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
         # utf16 is used by AAD portal. Do not change it to other random encoding
         # unless you know what you are doing.
         return key_description.encode('utf-16')
-
-    def gen_guid(self):
-        return uuid.uuid4()
 
     def build_application_accesses(self, required_resource_accesses):
         if not required_resource_accesses:
@@ -759,7 +757,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
             self.log('Getting "appRoles" from a full manifest')
             app_roles = app_roles.get('appRoles', [])
         for x in app_roles:
-            role = AppRole(id=x.get('id', None) or self.gen_guid(),
+            role = AppRole(id='9a3fa5f6-912d-5981-8150-b214e26d325a',
                            allowed_member_types=x.get('allowed_member_types', None),
                            description=x.get('description', None), display_name=x.get('display_name', None),
                            is_enabled=x.get('is_enabled', None), value=x.get('value', None))  # value ? additional_data
