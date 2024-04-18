@@ -757,7 +757,7 @@ class AzureRMADApplication(AzureRMModuleBaseExt):
             self.log('Getting "appRoles" from a full manifest')
             app_roles = app_roles.get('appRoles', [])
         for x in app_roles:
-            role = AppRole(id='9a3fa5f6-912d-5981-8150-b214e26d325a',
+            role = AppRole(id=uuid.uuid4(),
                            allowed_member_types=x.get('allowed_member_types', None),
                            description=x.get('description', None), display_name=x.get('display_name', None),
                            is_enabled=x.get('is_enabled', None), value=x.get('value', None))  # value ? additional_data
