@@ -201,6 +201,42 @@ options:
             - Whether to start the Post gresql server.
         type: bool
         default: False
+    identity:
+        description:
+            - Identity for the Server.
+        type: dict
+        version_added: '2.4.0'
+        suboptions:
+            type:
+                description:
+                    - Type of the managed identity
+                required: false
+                choices:
+                    - UserAssigned
+                    - None
+                default: None
+                type: str
+            user_assigned_identities:
+                description:
+                    - User Assigned Managed Identities and its options
+                required: false
+                type: dict
+                default: {}
+                suboptions:
+                    id:
+                        description:
+                            - List of the user assigned identities IDs associated to the VM
+                        required: false
+                        type: list
+                        elements: str
+                        default: []
+                    append:
+                        description:
+                            - If the list of identities has to be appended to current identities (true) or if it has to replace current identities (false)
+                        required: false
+                        type: bool
+                        default: True
+
 
 extends_documentation_fragment:
     - azure.azcollection.azure
@@ -489,6 +525,7 @@ servers:
 
 try:
     from ansible_collections.azure.azcollection.plugins.module_utils.azure_rm_common import AzureRMModuleBase
+    import azure.mgmt.rdbms.postgresql_flexibleservers.models as PostgreSQLFlexibleModels
     from azure.core.exceptions import ResourceNotFoundError
     from azure.core.polling import LROPoller
 except ImportError:
@@ -531,6 +568,18 @@ backup_spec = dict(
 
 storage_spec = dict(
     storage_size_gb=dict(type='int')
+)
+
+
+user_assigned_identities_spec = dict(
+    id=dict(type='list', default=[], elements='str'),
+    append=dict(type='bool', default=True)
+)
+
+
+managed_identity_spec = dict(
+    type=dict(type='str', choices=['UserAssigned', 'None'], default='None'),
+    user_assigned_identities=dict(type='dict', options=user_assigned_identities_spec, default={}),
 )
 
 
@@ -613,6 +662,7 @@ class AzureRMPostgreSqlFlexibleServers(AzureRMModuleBase):
             source_server_resource_id=dict(
                 type='str'
             ),
+            identity=dict(type='dict', options=managed_identity_spec),
             state=dict(
                 type='str',
                 default='present',
@@ -628,6 +678,7 @@ class AzureRMPostgreSqlFlexibleServers(AzureRMModuleBase):
         self.is_start = None
         self.is_stop = None
         self.is_restart = None
+        self.identity = None
 
         self.results = dict(changed=False)
         self.state = None
@@ -663,6 +714,10 @@ class AzureRMPostgreSqlFlexibleServers(AzureRMModuleBase):
             self.log("PostgreSQL Flexible Server instance doesn't exist")
             if self.state == 'present':
                 if not self.check_mode:
+                    if self.identity:
+                        update_identity, new_identity = self.update_identities({})
+                        if update_identity:
+                            self.parameters['identity'] = new_identity
                     response = self.create_postgresqlflexibleserver(self.parameters)
                     if self.is_stop:
                         self.stop_postgresqlflexibleserver()
@@ -711,6 +766,12 @@ class AzureRMPostgreSqlFlexibleServers(AzureRMModuleBase):
                             update_flag = True
                         else:
                             self.update_parameters['maintenance_window'][key] = old_response['maintenance_window'].get(key)
+
+                if self.identity:
+                    update_identity, new_identity = self.update_identities(old_response.get('identity', {}))
+                    if update_identity:
+                        self.update_parameters['identity'] = new_identity
+                        update_flag = True
 
                 update_tags, new_tags = self.update_tags(old_response['tags'])
                 self.update_parameters['tags'] = new_tags
@@ -915,8 +976,49 @@ class AzureRMPostgreSqlFlexibleServers(AzureRMModuleBase):
             result['maintenance_window']['start_minute'] = item.maintenance_window.start_minute
             result['maintenance_window']['start_hour'] = item.maintenance_window.start_hour
             result['maintenance_window']['day_of_week'] = item.maintenance_window.day_of_week
+        if item.identity is not None:
+            result['identity'] = item.identity.as_dict()
+        else:
+            result['identity'] = PostgreSQLFlexibleModels.UserAssignedIdentity(type='None').as_dict()
 
         return result
+
+    def update_identities(self, curr_identity):
+        new_identities = []
+        changed = False
+        current_managed_type = curr_identity.get('type', 'None')
+        current_managed_identities = set(curr_identity.get('user_assigned_identities', {}).keys())
+        param_identity = self.module.params.get('identity')
+        param_identities = set(param_identity.get('user_assigned_identities', {}).get('id', []))
+        new_identities = param_identities
+
+        # If type set to None, and Resource has None, nothing to do
+        if 'None' in param_identity.get('type') and current_managed_type == 'None':
+            pass
+        # If type set to None, and Resource has current identities, remove UserAssigned identities
+        elif param_identity.get('type') == 'None':
+            changed = True
+        # If type in module args contains 'UserAssigned'
+        elif 'UserAssigned' in param_identity.get('type'):
+            if param_identity.get('user_assigned_identities', {}).get('append', False) is True:
+                new_identities = param_identities.union(current_managed_identities)
+                if len(current_managed_identities) != len(new_identities):
+                    # update identities
+                    changed = True
+            # If new identities have to overwrite current identities
+            else:
+                # Check if module args identities are different as current ones
+                if current_managed_identities.difference(new_identities) != set():
+                    changed = True
+
+        # Append identities to the model
+        user_assigned_identities_dict = {uami: dict() for uami in new_identities}
+        new_identity = PostgreSQLFlexibleModels.UserAssignedIdentity(
+            type=param_identity.get('type'),
+            user_assigned_identities=user_assigned_identities_dict
+        )
+
+        return changed, new_identity
 
 
 def main():
