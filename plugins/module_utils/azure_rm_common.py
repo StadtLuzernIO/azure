@@ -279,8 +279,6 @@ try:
     except ImportError:
         import azure.mgmt.recoveryservicesbackup.activestamp.models as RecoveryServicesBackupModels
     from azure.mgmt.search import SearchManagementClient
-    from azure.mgmt.datalake.store import DataLakeStoreAccountManagementClient
-    import azure.mgmt.datalake.store.models as DataLakeStoreAccountModel
     from azure.mgmt.notificationhubs import NotificationHubsManagementClient
     from azure.mgmt.eventhub import EventHubManagementClient
     from azure.mgmt.datafactory import DataFactoryManagementClient
@@ -428,6 +426,7 @@ class AzureRMModuleBase(object):
         self._management_group_client = None
         self._resource_client = None
         self._compute_client = None
+        self._diskencryptionset_client = None
         self._image_client = None
         self._dns_client = None
         self._private_dns_client = None
@@ -702,8 +701,14 @@ class AzureRMModuleBase(object):
         try:
             self.log("Getting storage account detail")
             account = self.storage_client.storage_accounts.get_properties(resource_group_name=resource_group_name, account_name=storage_account_name)
-            if auth_mode == 'login' and self.azure_auth.credentials.get('credential'):
-                credential = self.azure_auth.credentials['credential']
+            if auth_mode == 'login' and self.azure_auth.credentials.get('credentials'):
+                credential = self.azure_auth.credentials['credentials']
+            elif (auth_mode == 'login' and self.azure_auth.credentials.get('tenant')
+                  and self.azure_auth.credentials.get('client_id')
+                  and self.azure_auth.credentials.get('secret')):
+                credential = client_secret.ClientSecretCredential(tenant_id=self.azure_auth.credentials.get('tenant'),
+                                                                  client_id=self.azure_auth.credentials.get('client_id'),
+                                                                  client_secret=self.azure_auth.credentials.get('secret'))
             else:
                 account_keys = self.storage_client.storage_accounts.list_keys(resource_group_name=resource_group_name, account_name=storage_account_name)
                 credential = account_keys.keys[0].value
@@ -954,7 +959,10 @@ class AzureRMModuleBase(object):
             client.models = types.MethodType(_ansible_get_models, client)
 
         if self.azure_auth._cert_validation_mode == 'ignore':
-            client._config.session_configuration_callback = self._validation_ignore_callback
+            if hasattr(client, '_config'):
+                client._config.session_configuration_callback = self._validation_ignore_callback
+            else:
+                client.config.session_configuration_callback = self._validation_ignore_callback
 
         return client
 
@@ -1115,6 +1123,21 @@ class AzureRMModuleBase(object):
         return ComputeManagementClient.models("2021-04-01")
 
     @property
+    def diskencryptionset_client(self):
+        self.log('Getting diskencryptionset client')
+        base_url = self._cloud_environment.endpoints.resource_manager
+        if not self._diskencryptionset_client:
+            self._diskencryptionset_client = self.get_mgmt_svc_client(ComputeManagementClient,
+                                                                      base_url=base_url,
+                                                                      api_version='2023-01-02')
+        return self._diskencryptionset_client
+
+    @property
+    def diskencryptionset_models(self):
+        self.log("Getting compute models")
+        return ComputeManagementClient.models("2023-01-02")
+
+    @property
     def dns_client(self):
         self.log('Getting dns client')
         if not self._dns_client:
@@ -1157,13 +1180,13 @@ class AzureRMModuleBase(object):
         if not self._containerservice_client:
             self._containerservice_client = self.get_mgmt_svc_client(ContainerServiceClient,
                                                                      base_url=self._cloud_environment.endpoints.resource_manager,
-                                                                     api_version='2017-07-01')
+                                                                     api_version='2019-04-01')
         return self._containerservice_client
 
     @property
     def managedcluster_models(self):
         self.log("Getting container service models")
-        return ContainerServiceClient.models('2022-02-01')
+        return ContainerServiceClient.models('2024-05-01')
 
     @property
     def managedcluster_client(self):
@@ -1171,7 +1194,7 @@ class AzureRMModuleBase(object):
         if not self._managedcluster_client:
             self._managedcluster_client = self.get_mgmt_svc_client(ContainerServiceClient,
                                                                    base_url=self._cloud_environment.endpoints.resource_manager,
-                                                                   api_version='2022-02-01')
+                                                                   api_version='2024-05-01')
         return self._managedcluster_client
 
     @property
@@ -1320,7 +1343,7 @@ class AzureRMModuleBase(object):
         self.log('Getting iothub client')
         if not self._IoThub_client:
             self._IoThub_client = self.get_mgmt_svc_client(IotHubClient,
-                                                           api_version='2018-04-01',
+                                                           api_version='2023-06-30-preview',
                                                            base_url=self._cloud_environment.endpoints.resource_manager)
         return self._IoThub_client
 
@@ -1362,19 +1385,6 @@ class AzureRMModuleBase(object):
                                                            base_url=self._cloud_environment.endpoints.resource_manager,
                                                            api_version='2020-08-01')
         return self._search_client
-
-    @property
-    def datalake_store_client(self):
-        self.log('Getting datalake store client...')
-        if not self._datalake_store_client:
-            self._datalake_store_client = self.get_mgmt_svc_client(DataLakeStoreAccountManagementClient,
-                                                                   base_url=self._cloud_environment.endpoints.resource_manager,
-                                                                   api_version='2016-11-01')
-        return self._datalake_store_client
-
-    @property
-    def datalake_store_models(self):
-        return DataLakeStoreAccountModel
 
     @property
     def notification_hub_client(self):

@@ -15,6 +15,8 @@ version_added: "0.1.2"
 short_description: Manage a managed Azure Container Service (AKS) instance
 description:
     - Create, update and delete a managed Azure Container Service (AKS) instance.
+    - You can only specify C(identity) or C(service_principal), not both.  If you don't specify either it will
+      default to identity->type->SystemAssigned.
 
 options:
     resource_group:
@@ -170,7 +172,7 @@ options:
                 type: str
     service_principal:
         description:
-            - The service principal suboptions. If not provided - use system-assigned managed identity.
+            - The service principal suboptions.
         type: dict
         suboptions:
             client_id:
@@ -181,6 +183,25 @@ options:
             client_secret:
                 description:
                     - The secret password associated with the service principal.
+                type: str
+    identity:
+        description:
+            - Identity for the Server.
+        type: dict
+        version_added: '2.4.0'
+        suboptions:
+            type:
+                description:
+                    - Type of the managed identity
+                required: false
+                choices:
+                    - UserAssigned
+                    - SystemAssigned
+                default: SystemAssigned
+                type: str
+            user_assigned_identities:
+                description:
+                    - User Assigned Managed Identity
                 type: str
     enable_rbac:
         description:
@@ -204,6 +225,12 @@ options:
                 choices:
                     - azure
                     - kubenet
+            network_plugin_mode:
+                description:
+                    - Network plugin mode used for building the Kubernetes network.
+                type: str
+                choices:
+                    - Overlay
             network_policy:
                 description: Network policy used for building Kubernetes network.
                 type: str
@@ -229,8 +256,11 @@ options:
                 type: str
             docker_bridge_cidr:
                 description:
+                    - (deprecated) The docker bridge cidr.
                     - A CIDR notation IP range assigned to the Docker bridge network.
                     - It must not overlap with any Subnet IP ranges or the Kubernetes service address range.
+                    - API version is higher than 23.0.0, Model ContainerServiceNetworkProfile no longer has parameter (docker_bridge_cidr).
+                    - This parameter will be abandoned in the next version.
                 type: str
             load_balancer_sku:
                 description:
@@ -247,6 +277,8 @@ options:
                 choices:
                     - loadBalancer
                     - userDefinedRouting
+                    - managedNATGateway
+                    - userAssignedNATGateway
     api_server_access_profile:
         description:
             - Profile of API Access configuration.
@@ -285,6 +317,11 @@ options:
             managed:
                 description:
                     - Whether to enable managed AAD.
+                type: bool
+                default: false
+            enable_azure_rbac:
+                description:
+                    - Whether to enable Azure RBAC for Kubernetes authorization.
                 type: bool
                 default: false
             admin_group_object_ids:
@@ -407,7 +444,32 @@ options:
                                 description:
                                     - The client ID of the user assigned identity.
                                 type: str
-
+    auto_upgrade_profile:
+        description:
+            - Auto upgrade profile for a managed cluster.
+        type: dict
+        suboptions:
+            upgrade_channel:
+                description:
+                    - Setting the AKS cluster auto-upgrade channel.
+                type: str
+                default: node-image
+                choices:
+                    - rapid
+                    - stable
+                    - patch
+                    - node-image
+                    - none
+            node_os_upgrade_channel:
+                description:
+                    - Manner in which the OS on your nodes is updated.
+                type: str
+                default: NodeImage
+                choices:
+                    - None
+                    - Unmanaged
+                    - SecurityPatch
+                    - NodeImage
 extends_documentation_fragment:
     - azure.azcollection.azure
     - azure.azcollection.azure_tags
@@ -577,6 +639,9 @@ state:
            storage_profile: ManagedDisks
            vm_size: Standard_B2s
            vnet_subnet_id: Null
+        auto_upgrade_profile:
+          node_os_upgrade_channel: NodeImage
+          upgrade_channel: patch
         changed: false
         dns_prefix: aks9860bdcd89
         id: "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/resourcegroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/aks9860bdc"
@@ -590,6 +655,9 @@ state:
         provisioning_state: Succeeded
         service_principal_profile:
            client_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        identity:
+           "type": "UserAssigned"
+           "user_assigned_identities": {}
         pod_identity_profile: {
             "allow_network_plugin_kubenet": false,
             "user_assigned_identities": [
@@ -633,6 +701,7 @@ def create_aks_dict(aks):
         kubernetes_version=aks.kubernetes_version,
         tags=aks.tags,
         linux_profile=create_linux_profile_dict(aks.linux_profile),
+        identity=aks.identity.as_dict() if aks.identity else None,
         service_principal_profile=create_service_principal_profile_dict(
             aks.service_principal_profile),
         provisioning_state=aks.provisioning_state,
@@ -647,8 +716,16 @@ def create_aks_dict(aks):
         addon=create_addon_dict(aks.addon_profiles),
         fqdn=aks.fqdn,
         node_resource_group=aks.node_resource_group,
+        auto_upgrade_profile=create_auto_upgrade_profile_dict(aks.auto_upgrade_profile),
         pod_identity_profile=create_pod_identity_profile(aks.pod_identity_profile.as_dict()) if aks.pod_identity_profile else None
     )
+
+
+def create_auto_upgrade_profile_dict(auto_upgrade_profile):
+    return dict(
+        upgrade_channel=auto_upgrade_profile.upgrade_channel,
+        node_os_upgrade_channel=auto_upgrade_profile.node_os_upgrade_channel
+    ) if auto_upgrade_profile else None
 
 
 def create_pod_identity_profile(pod_profile):
@@ -662,11 +739,12 @@ def create_pod_identity_profile(pod_profile):
 def create_network_profiles_dict(network):
     return dict(
         network_plugin=network.network_plugin,
+        network_plugin_mode=network.network_plugin_mode,
         network_policy=network.network_policy,
         pod_cidr=network.pod_cidr,
         service_cidr=network.service_cidr,
         dns_service_ip=network.dns_service_ip,
-        docker_bridge_cidr=network.docker_bridge_cidr,
+        docker_bridge_cidr=network.docker_bridge_cidr if hasattr(network, 'docker_bridge_cidr') else None,
         load_balancer_sku=network.load_balancer_sku,
         outbound_type=network.outbound_type
     ) if network else dict()
@@ -804,13 +882,14 @@ agent_pool_profile_spec = dict(
 
 network_profile_spec = dict(
     network_plugin=dict(type='str', choices=['azure', 'kubenet']),
+    network_plugin_mode=dict(type='str', choices=['Overlay']),
     network_policy=dict(type='str', choices=['azure', 'calico']),
     pod_cidr=dict(type='str'),
     service_cidr=dict(type='str'),
     dns_service_ip=dict(type='str'),
-    docker_bridge_cidr=dict(type='str'),
+    docker_bridge_cidr=dict(type='str', removed_in_version='3.0.0', removed_from_collection='azure.azcollection'),
     load_balancer_sku=dict(type='str', choices=['standard', 'basic']),
-    outbound_type=dict(type='str', default='loadBalancer', choices=['userDefinedRouting', 'loadBalancer'])
+    outbound_type=dict(type='str', default='loadBalancer', choices=['userDefinedRouting', 'loadBalancer', 'userAssignedNATGateway', 'managedNATGateway'])
 )
 
 
@@ -820,6 +899,7 @@ aad_profile_spec = dict(
     server_app_secret=dict(type='str', no_log=True),
     tenant_id=dict(type='str'),
     managed=dict(type='bool', default='false'),
+    enable_azure_rbac=dict(type='bool', default='false'),
     admin_group_object_ids=dict(type='list', elements='str')
 )
 
@@ -828,6 +908,19 @@ api_server_access_profile_spec = dict(
     authorized_ip_ranges=dict(type='list', elements='str'),
     enable_private_cluster=dict(type='bool'),
 )
+
+
+managed_identity_spec = dict(
+    type=dict(type='str', choices=['SystemAssigned', 'UserAssigned'], default='SystemAssigned'),
+    user_assigned_identities=dict(type='str'),
+)
+
+
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
 
 class AzureRMManagedCluster(AzureRMModuleBaseExt):
@@ -869,6 +962,14 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
             service_principal=dict(
                 type='dict',
                 options=service_principal_spec
+            ),
+            identity=dict(
+                type='dict',
+                options=managed_identity_spec,
+                required_if=[
+                    ('type', 'UserAssigned', [
+                        'user_assigned_identities']),
+                ]
             ),
             enable_rbac=dict(
                 type='bool',
@@ -917,6 +1018,21 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                         )
                     )
                 )
+            ),
+            auto_upgrade_profile=dict(
+                type='dict',
+                options=dict(
+                    upgrade_channel=dict(
+                        type='str',
+                        choices=["rapid", "stable", "patch", "node-image", "none"],
+                        default='node-image'
+                    ),
+                    node_os_upgrade_channel=dict(
+                        type='str',
+                        choices=["None", "Unmanaged", "SecurityPatch", "NodeImage"],
+                        default='NodeImage'
+                    )
+                )
             )
         )
 
@@ -930,6 +1046,7 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
         self.linux_profile = None
         self.agent_pool_profiles = None
         self.service_principal = None
+        self.identity = None
         self.enable_rbac = False
         self.network_profile = None
         self.aad_profile = None
@@ -937,6 +1054,9 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
         self.addon = None
         self.node_resource_group = None
         self.pod_identity_profile = None
+        self.auto_upgrade_profile = None
+
+        mutually_exclusive = [('identity', 'service_principal')]
 
         required_if = [
             ('state', 'present', [
@@ -948,7 +1068,8 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
         super(AzureRMManagedCluster, self).__init__(derived_arg_spec=self.module_arg_spec,
                                                     supports_check_mode=True,
                                                     supports_tags=True,
-                                                    required_if=required_if)
+                                                    required_if=required_if,
+                                                    mutually_exclusive=mutually_exclusive)
 
     def exec_module(self, **kwargs):
         """Main module execution method"""
@@ -972,6 +1093,11 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
             available_versions = self.get_all_versions()
             if not response:
                 to_be_updated = True
+                # Default to SystemAssigned if service_principal is not specified
+                if not self.service_principal and not self.identity:
+                    self.identity = dotdict({'type': 'SystemAssigned'})
+                if self.identity:
+                    changed, self.identity = self.update_identity(self.identity, {})
                 if self.kubernetes_version not in available_versions.keys():
                     self.fail("Unsupported kubernetes version. Expected one of {0} but got {1}".format(available_versions.keys(), self.kubernetes_version))
             else:
@@ -1021,7 +1147,8 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                         to_be_updated = True
 
                     if response['api_server_access_profile'] != self.api_server_access_profile and self.api_server_access_profile is not None:
-                        if self.api_server_access_profile.get('enable_private_cluster') != response['api_server_access_profile'].get('enable_private_cluster'):
+                        if bool(self.api_server_access_profile.get('enable_private_cluster')) != \
+                           bool(response['api_server_access_profile'].get('enable_private_cluster')):
                             self.log(("Api Server Access Diff - Origin {0} / Update {1}"
                                      .format(str(self.api_server_access_profile), str(response['api_server_access_profile']))))
                             self.fail("The enable_private_cluster of the api server access profile cannot be updated")
@@ -1035,7 +1162,7 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                     if self.network_profile:
                         for key in self.network_profile.keys():
                             original = response['network_profile'].get(key) or ''
-                            if self.network_profile[key] and self.network_profile[key].lower() != original.lower():
+                            if key != 'docker_bridge_cidr' and self.network_profile[key] and self.network_profile[key].lower() != original.lower():
                                 to_be_updated = True
 
                     def compare_addon(origin, patch, config):
@@ -1056,6 +1183,10 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                             addon_name = ADDONS[key]['name']
                             if not compare_addon(response['addon'].get(addon_name), self.addon.get(key), ADDONS[key].get('config')):
                                 to_be_updated = True
+                    if not self.default_compare({}, self.auto_upgrade_profile, response['auto_upgrade_profile'], '', dict(compare=[])):
+                        to_be_updated = True
+                    else:
+                        self.auto_upgrade_profile = response['auto_upgrade_profile']
 
                     for profile_result in response['agent_pool_profiles']:
                         matched = False
@@ -1118,6 +1249,14 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                         else:
                             self.pod_identity_profile = response['pod_identity_profile']
 
+                        # Default to SystemAssigned if service_principal is not specified
+                        if not self.service_principal and not self.identity:
+                            self.identity = dotdict({'type': 'SystemAssigned'})
+                        if self.identity:
+                            changed, self.identity = self.update_identity(self.identity, response['identity'])
+                            if changed:
+                                to_be_updated = True
+
             if update_agentpool:
                 self.log("Need to update agentpool")
                 if not self.check_mode:
@@ -1177,12 +1316,12 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
         if self.agent_pool_profiles:
             agentpools = [self.create_agent_pool_profile_instance(profile) for profile in self.agent_pool_profiles]
 
+        # Only service_principal or identity can be specified, but default to SystemAssigned if none specified.
         if self.service_principal:
             service_principal_profile = self.create_service_principal_profile_instance(self.service_principal)
             identity = None
         else:
             service_principal_profile = None
-            identity = self.managedcluster_models.ManagedClusterIdentity(type='SystemAssigned')
 
         if self.linux_profile:
             linux_profile = self.create_linux_profile_instance(self.linux_profile)
@@ -1198,6 +1337,14 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
         else:
             pod_identity_profile = None
 
+        if self.auto_upgrade_profile is not None:
+            auto_upgrade_profile = self.managedcluster_models.ManagedClusterAutoUpgradeProfile(
+                upgrade_channel=self.auto_upgrade_profile.get('upgrade_channel'),
+                node_os_upgrade_channel=self.auto_upgrade_profile.get('node_os_upgrade_channel')
+            )
+        else:
+            auto_upgrade_profile = None
+
         parameters = self.managedcluster_models.ManagedCluster(
             location=self.location,
             dns_prefix=self.dns_prefix,
@@ -1206,14 +1353,15 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
             service_principal_profile=service_principal_profile,
             agent_pool_profiles=agentpools,
             linux_profile=linux_profile,
-            identity=identity,
+            identity=self.identity,
             enable_rbac=self.enable_rbac,
             network_profile=self.create_network_profile_instance(self.network_profile),
             aad_profile=self.create_aad_profile_instance(self.aad_profile),
             api_server_access_profile=self.create_api_server_access_profile_instance(self.api_server_access_profile),
             addon_profiles=self.create_addon_profile_instance(self.addon),
             node_resource_group=self.node_resource_group,
-            pod_identity_profile=pod_identity_profile
+            pod_identity_profile=pod_identity_profile,
+            auto_upgrade_profile=auto_upgrade_profile
         )
 
         # self.log("service_principal_profile : {0}".format(parameters.service_principal_profile))
@@ -1385,6 +1533,34 @@ class AzureRMManagedCluster(AzureRMModuleBaseExt):
                     config[config_spec[v]] = config[v]
                 result[name] = self.managedcluster_models.ManagedClusterAddonProfile(config=config, enabled=config['enabled'])
         return result
+
+    # AKS only supports a single UserAssigned Identity
+    def update_identity(self, param_identity, curr_identity):
+        user_identity = None
+        changed = False
+        current_managed_type = curr_identity.get('type', 'SystemAssigned')
+        current_managed_identity = curr_identity.get('user_assigned_identities', {})
+        param_managed_identity = param_identity.get('user_assigned_identities')
+
+        # If type set to SystamAssigned, and Resource has SystamAssigned, nothing to do
+        if 'SystemAssigned' in param_identity.get('type') and current_managed_type == 'SystemAssigned':
+            pass
+        # If type set to SystemAssigned, and Resource has current identity, remove UserAssigned identity
+        elif param_identity.get('type') == 'SystemAssigned':
+            changed = True
+        # If type in module args contains 'UserAssigned'
+        elif 'UserAssigned' in param_identity.get('type'):
+            if param_managed_identity not in current_managed_identity.keys():
+                user_identity = {param_managed_identity: {}}
+                changed = True
+
+        new_identity = self.managedcluster_models.ManagedClusterIdentity(
+            type=param_identity.get('type'),
+        )
+        if user_identity:
+            new_identity.user_assigned_identities = user_identity
+
+        return changed, new_identity
 
 
 def main():
