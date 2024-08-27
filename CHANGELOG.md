@@ -1,5 +1,106 @@
 # Change Log
 
+## v2.6.0 (2024-07-01)
+
+### FEATURE ENHANCEMENT
+  - Minimum supported Ansible core version to v2.15 - Ansible v2.15 EOL(https://docs.ansible.com/ansible/latest/reference_appendices/release_and_maintenance.html#ansible-community-changelogs) 
+
+## v2.5.0 (2024-06-28)
+
+### NEW MODULES
+  - azure_rm_capacityreservationgroup: Add support for managed capacity reservation group ([#1557](https://github.com/ansible-collections/azure/pull/1557))
+  - azure_rm_capacityreservationgroup_info: Add support for get capacity reservation group ([#1557](https://github.com/ansible-collections/azure/pull/1557))
+  - azure_rm_networkwatcher: Add support for managed network watcher ([#1576](https://github.com/ansible-collections/azure/pull/1576))
+  - azure_rm_networkwatcher_info: Add support for get network watcher facts ([#1576](https://github.com/ansible-collections/azure/pull/1576))
+  - azure_rm_networkflowlogs: Add support for managed network flow logs ([#1576](https://github.com/ansible-collections/azure/pull/1576))
+  - azure_rm_networkflowlogs_info: Add support for get network flow logs ([#1576](https://github.com/ansible-collections/azure/pull/1576))
+
+### FEATURE ENHANCEMENT
+  - azure_rm_webapp: Add support for `identity` ([#1566](https://github.com/ansible-collections/azure/pull/1566))
+  - azure_rm_webapp_info: Add support for `identity` ([#1566](https://github.com/ansible-collections/azure/pull/1566))
+  - azure_rm_galleryimageversion: Allow creating gallery image versions from storage accounts ([#1466](https://github.com/ansible-collections/azure/pull/1466))
+  - requirements.txt:
+    - Bump `azure-storage-blob` from 12.11.0 to 12.13.0 ([#1572](https://github.com/ansible-collections/azure/pull/1572))
+    - Update `azure-cli-core` to 2.61.0 ([#1593](https://github.com/ansible-collections/azure/pull/1593))
+    - Bump `azure-identity` from 1.14.0 to 1.16.1 ([#1596](https://github.com/ansible-collections/azure/pull/1596))
+    - Limit `azure-iot-hub` to `x86_64 platforms` ([#1609](https://github.com/ansible-collections/azure/pull/1609))
+  - azure_rm_containerinstance: Add support for `identity` ([#1581](https://github.com/ansible-collections/azure/pull/1581))
+  - azure_rm_containerinstance_info: Add support for `identity` ([#1581](https://github.com/ansible-collections/azure/pull/1581))
+  - azure_rm_storageaccount: Add support for `allow_shared_key_access` ([#1583](https://github.com/ansible-collections/azure/pull/1583))
+  - azure_rm_virtualmachinescaleset: Add support for `identity` ([#1585](https://github.com/ansible-collections/azure/pull/1585))
+  - azure_rm_virtualmachinescaleset_info: Add support for `identity` ([#1585](https://github.com/ansible-collections/azure/pull/1585))
+
+### BUG FIXING
+  - azure_rm_webapp: Delete the imported logging module ([#1567](https://github.com/ansible-collections/azure/pull/1567))
+  - azure_rm_postgresqlflexiblefirewallrule: Delete the imported logging module ([#1567](https://github.com/ansible-collections/azure/pull/1567))
+  - azure_rm_adgroup_info: Return None if not a member of the group ([#1579](https://github.com/ansible-collections/azure/pull/1579))
+
+
+## v2.4.0 (2024-05-30)
+
+### NEW MODULES
+  - azure_rm_storageaccountmanagementpolicy: Add support for manage storage account management policy ([#1536](https://github.com/ansible-collections/azure/pull/1536))
+  - azure_rm_storageaccountmanagementpolicy_info: Add support for manage storage account management policy ([#1536](https://github.com/ansible-collections/azure/pull/1536))
+  - azure_rm_virtualnetworkgatewaynatrule: Add support for managed virtual network gateway nat rule ([#1525](https://github.com/ansible-collections/azure/pull/1525))
+  - azure_rm_virtualnetworkgatewaynatrule_info: Add support for virtual network gateway nat rule ([#1525](https://github.com/ansible-collections/azure/pull/1525))
+  - azure_rm_localnetworkgateway: Add support for mange local network gateway ([#1523](https://github.com/ansible-collections/azure/pull/1523))
+  - azure_rm_localnetworkgateway_info: Add fetch for mange local network gateway facts ([#1523](https://github.com/ansible-collections/azure/pull/1523))
+  - azure_rm_sqlmidatabase: Add support for managed SQL managed database ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_sqlmidatabase_info: Add support for fetch the managed SQL managed database ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_sqlmidblongtermretentionpolicy: Add support for managed SQL managed database long term retention policy ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_sqlmidblongtermretentionpolicy_info: Add support for fetch managed SQL managed database long term retention policy ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_sqlmidbshorttermretentionpolicy: Add support for fetch managed SQL managed database short term retention policy ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_sqlmidbshorttermretentionpolicy_info: Add support for fetch managed SQL managed database short term retention policy ([#1548](https://github.com/ansible-collections/azure/pull/1548))
+  - azure_rm_vmsku_info: Add support for list VM SKUs ([#1546](https://github.com/ansible-collections/azure/pull/1546))
+  - tests/integration/requirements.txt: Symlink requirements-azure.txt from tests/integration ([#1551](https://github.com/ansible-collections/azure/pull/1551))
+
+### FEATURE ENHANCEMENT
+  - azure_rm_aduser: Add support for `on_premises_extension_attributes` ([#1518](https://github.com/ansible-collections/azure/pull/1518))
+  - azure_rm_aduser_info: Add support for `on_premises_extension_attributes` ([#1518](https://github.com/ansible-collections/azure/pull/1518))
+  - azure_keyvault_secret: Add support for `cloud_type` ([#1517](https://github.com/ansible-collections/azure/pull/1517))
+  - azure_rm_postgresqlflexibleserver: Add support for `identity` ([#1528](https://github.com/ansible-collections/azure/pull/1528))
+  - azure_rm_postgresqlflexibleserver_info: Add support for `identity` ([#1528](https://github.com/ansible-collections/azure/pull/1528))
+  - plugins/inventory/azure_rm.py: Expand Inventory filter integration tests ([#1547](https://github.com/ansible-collections/azure/pull/1547))
+  - azure_rm_webapp: Add support for `site_auth_settings` ([#1538](https://github.com/ansible-collections/azure/pull/1538))
+  - azure_rm_webapp_info: Add support for `site_auth_settings` ([#1538](https://github.com/ansible-collections/azure/pull/1538))
+  - azure_rm_aks:
+    - Add support for UserAssigned Identity ([#1543](https://github.com/ansible-collections/azure/pull/1543))
+    - Add `managedNATGateway` and `userAssignedNATGateway` to `outbound_type` ([#1537](https://github.com/ansible-collections/azure/pull/1537))
+  - azure_rm_webappaccessrestriction: Add more parameters to `ip_security_restrictions` ([#1558](https://github.com/ansible-collections/azure/pull/1558))
+  - azure_rm_webappaccessrestriction_info: Add more parameters to `ip_security_restrictions` ([#1558](https://github.com/ansible-collections/azure/pull/1558))
+  - azure_rm_virtualmachine: Add support for attaching existing managed data disks at VM creation ([#1430](https://github.com/ansible-collections/azure/pull/1430))
+  - azure_rm_aksagentpool: Add support for more parameters ([#1477](https://github.com/ansible-collections/azure/pull/1477))
+  - azure_rm_aksagentpool_info: Add support for  more parameters ([#1477](https://github.com/ansible-collections/azure/pull/1477))
+  - azure_rm_adgroup: Allow service principals and nested groups to be returned in membership attributes ([#1507](https://github.com/ansible-collections/azure/pull/1507))
+  - azure_rm_adgroup_info: Allow service principals and nested groups to be returned in membership attributes ([#1507](https://github.com/ansible-collections/azure/pull/1507))
+  - azure_rm_backupazurevm: No need to json serialization the response ([#1531](https://github.com/ansible-collections/azure/pull/1531))
+
+### BUG FIXING
+  - azure_rm_adapplication: Fix `optional_claims` handling ([#1480](https://github.com/ansible-collections/azure/pull/1480))
+  - azure_rm_cognitivesearch: Fix test failed ([#1520](https://github.com/ansible-collections/azure/pull/1520))
+  - azure_rm_common.py: Fix the inconsistency between custom classes and Python SDK attributes ([#1554](https://github.com/ansible-collections/azure/pull/1554))
+  - meta/runtime.yml:
+    - Keep action_groups and modules list consistent ([#1553](https://github.com/ansible-collections/azure/pull/1553))
+    - Delete the deprecate modules ([#1556](https://github.com/ansible-collections/azure/pull/1556))
+  - azure_rm_rediscache_info: Fix typo ([#1550](https://github.com/ansible-collections/azure/pull/1550))
+  - plugins/inventory/azure_rm.py: Fix inventory host processing ([#1545](https://github.com/ansible-collections/azure/pull/1545))
+  - azure_rm_accesstoken_info: Fix authorization issue ([#1541](https://github.com/ansible-collections/azure/pull/1541))
+  - azure_rm_adgroup: Support update functionality ([#1530](https://github.com/ansible-collections/azure/pull/1530))
+  - azure_rm_webapp: Delete the imported logging module ([#1567](https://github.com/ansible-collections/azure/pull/1567))
+  - azure_rm_postgresqlflexiblefirewallrule: Delete the logging module ([#1567](https://github.com/ansible-collections/azure/pull/1567))
+  - azure_rm_loadbalancer: Remove functionality which should have been removed for Ansible 2.9 ([#1508](https://github.com/ansible-collections/azure/pull/1508))
+  - azure_rm_networkinterface: Remove functionality which should have been removed for Ansible 2.9 ([#1508](https://github.com/ansible-collections/azure/pull/1508))
+  - azure_rm_localnetworkgateway: Fix documentation mistakes ([#1563](https://github.com/ansible-collections/azure/pull/1563))
+  - azure_rm_virtualmachine: Create `_own_nsg_` tag only if `created_nsg` is `true` ([#1565](https://github.com/ansible-collections/azure/pull/1565))
+  - azure_rm_storageblob: Fix authentication issue when shared keys disabled ([#1564](https://github.com/ansible-collections/azure/pull/1564))
+  - azure_rm_virtualmachinescalesetinstance_info: Fixed obtaining flexible VMSS instances failed ([#1529](https://github.com/ansible-collections/azure/pull/1529))
+
+### BREAKING CHANGE: 
+  - azure_rm_datalakestore: Deprecate `azure-mgmt-datalake-store` ([#1555](https://github.com/ansible-collections/azure/pull/1555))
+  - azure_rm_datalakestore_info: Deprecate `azure_rm_datalakestore_info` ([#1555](https://github.com/ansible-collections/azure/pull/1555))
+  - requirements.txt: Rename `requirements-azure.txt` to `requirements.txt` ([#1552](https://github.com/ansible-collections/azure/pull/1552))
+  - sanity-requirements.txt: Rename `sanity-requirements-azure.txt` to `sanity-requirements.txt` ([#1552](https://github.com/ansible-collections/azure/pull/1552))
+
 ## v2.3.0 (2024-03-27)
 
 ### NEW MODULES

@@ -159,22 +159,39 @@ options:
         description:
             - Name or ID of an existing availability set to add the VM to. The I(availability_set) should be in the same resource group as VM.
         type: str
-    proximity_placement_group:
+    capacity_reservation_group:
         description:
-            - The name or ID of the proximity placement group the VM should be associated with.
+            - The name or ID of the capacity reservation group to be associated with.
         type: dict
         suboptions:
             id:
                 description:
-                    - The ID of the proximity placement group the VM should be associated with.
+                    - The ID of the capacity reservation group to be associated with.
                 type: str
             name:
                 description:
-                    - The Name of the proximity placement group the VM should be associated with.
+                    - The Name of the capacity reservation group to be associated with.
                 type: str
             resource_group:
                 description:
-                    - The resource group of the proximity placement group the VM should be associated with.
+                    - The resource group of capcacity reservation group to be associated with.
+                type: str
+    proximity_placement_group:
+        description:
+            - The name or ID of the proximity placement group to be associated with.
+        type: dict
+        suboptions:
+            id:
+                description:
+                    - The ID of the proximity placement group to be associated with.
+                type: str
+            name:
+                description:
+                    - The Name of the proximity placement group to be associated with.
+                type: str
+            resource_group:
+                description:
+                    - The resource group of the proximity placement group to be associated with.
                 type: str
     storage_account_name:
         description:
@@ -221,6 +238,7 @@ options:
             - Type of OS disk caching.
         type: str
         choices:
+            - None
             - ReadOnly
             - ReadWrite
         aliases:
@@ -270,6 +288,11 @@ options:
                 description:
                     - ID of disk encryption set for data disk.
                 type: str
+            managed_disk_id:
+                description:
+                    - The ID of the existing data disk.
+                    - If specified, attach mode will be chosen.
+                type: str
             managed_disk_type:
                 description:
                     - Managed data disk type.
@@ -313,6 +336,7 @@ options:
                     - Type of data disk caching.
                 type: str
                 choices:
+                    - None
                     - ReadOnly
                     - ReadWrite
     public_ip_allocation_method:
@@ -921,6 +945,7 @@ azure_vm:
             "proximityPlacementGroup": {
                     "id": "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/proximityPlacementGroups/testid13"
             },
+            "CapacityReservation": {},
             "hardwareProfile": {
                 "vmSize": "Standard_D1"
             },
@@ -1064,8 +1089,8 @@ import time
 try:
     from azure.core.exceptions import ResourceNotFoundError
     from azure.core.polling import LROPoller
-    from azure.core.exceptions import ResourceNotFoundError
     from azure.mgmt.core.tools import parse_resource_id
+    from datetime import datetime
 except ImportError:
     # This is handled in azure_rm_common
     pass
@@ -1091,6 +1116,13 @@ def extract_names_from_blob_uri(blob_uri, storage_suffix):
         raise Exception("unable to parse blob uri '%s'" % blob_uri)
     extracted_names = m.groupdict()
     return extracted_names
+
+
+capacity_reservation_group_spec = dict(
+    id=dict(type='str'),
+    name=dict(type='str'),
+    resource_group=dict(type='str')
+)
 
 
 proximity_placement_group_spec = dict(
@@ -1145,12 +1177,13 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
             storage_account_name=dict(type='str', aliases=['storage_account']),
             storage_container_name=dict(type='str', aliases=['storage_container'], default='vhds'),
             storage_blob_name=dict(type='str', aliases=['storage_blob']),
-            os_disk_caching=dict(type='str', aliases=['disk_caching'], choices=['ReadOnly', 'ReadWrite']),
+            os_disk_caching=dict(type='str', aliases=['disk_caching'], choices=['None', 'ReadOnly', 'ReadWrite']),
             os_disk_size_gb=dict(type='int'),
             os_disk_encryption_set=dict(type='str'),
             managed_disk_type=dict(type='str', choices=['Standard_LRS', 'StandardSSD_LRS', 'StandardSSD_ZRS', 'Premium_LRS', 'Premium_ZRS', 'UltraSSD_LRS']),
             os_disk_name=dict(type='str'),
             proximity_placement_group=dict(type='dict', options=proximity_placement_group_spec),
+            capacity_reservation_group=dict(type='dict', options=capacity_reservation_group_spec),
             os_type=dict(type='str', choices=['Linux', 'Windows'], default='Linux'),
             public_ip_allocation_method=dict(type='str', choices=['Dynamic', 'Static', 'Disabled'], default='Static',
                                              aliases=['public_ip_allocation']),
@@ -1181,12 +1214,13 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                     lun=dict(type='int', required=True),
                     disk_size_gb=dict(type='int'),
                     disk_encryption_set=dict(type='str'),
+                    managed_disk_id=dict(type='str'),
                     managed_disk_type=dict(type='str', choices=['Standard_LRS', 'StandardSSD_LRS',
                                            'StandardSSD_ZRS', 'Premium_LRS', 'Premium_ZRS', 'UltraSSD_LRS']),
                     storage_account_name=dict(type='str'),
                     storage_container_name=dict(type='str', default='vhds'),
                     storage_blob_name=dict(type='str'),
-                    caching=dict(type='str', choices=['ReadOnly', 'ReadWrite'])
+                    caching=dict(type='str', choices=['None', 'ReadOnly', 'ReadWrite'])
                 )
             ),
             plan=dict(type='dict'),
@@ -1251,6 +1285,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
         self.managed_disk_type = None
         self.os_disk_name = None
         self.proximity_placement_group = None
+        self.capacity_reservation_group = None
         self.network_interface_names = None
         self.remove_on_absent = set()
         self.tags = None
@@ -1413,7 +1448,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                 elif self.image.get('id'):
                     try:
                         image_reference = self.compute_models.ImageReference(id=self.image['id'])
-                    except Exception as exc:
+                    except Exception:
                         self.fail("id Error: Cannot get image from the reference id - {0}".format(self.image['id']))
                 else:
                     self.fail("parameter error: expecting image to contain [publisher, offer, sku, version], [name, resource_group] or [id]")
@@ -1725,6 +1760,29 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                     else:
                         self.fail("Parameter error: Please recheck your proximity placement group ")
 
+                if self.capacity_reservation_group is not None:
+                    if vm_dict.get('capacity_reservation') is None:
+                        changed = True
+                        differences.append('capacity_reservation_group')
+                        if self.capacity_reservation_group.get('name') is not None and self.capacity_reservation_group.get('resource_group') is not None:
+                            capacity_reservation_group = self.get_capacity_reservation_group(self.capacity_reservation_group.get('resource_group'),
+                                                                                             self.capacity_reservation_group.get('name'))
+                            self.capacity_reservation_group['id'] = capacity_reservation_group.id
+
+                    elif self.capacity_reservation_group.get('id') is not None:
+                        if vm_dict['capacity_reservation'].get('id', "").lower() != self.capacity_reservation_group['id'].lower():
+                            changed = True
+                            differences.append('capacity_reservation_group')
+                    elif self.capacity_reservation_group.get('name') is not None and self.capacity_reservation_group.get('resource_group') is not None:
+                        capacity_reservation_group = self.get_capacity_reservation_group(self.capacity_reservation_group.get('resource_group'),
+                                                                                         self.capacity_reservation_group.get('name'))
+                        if vm_dict['capacity_reservation'].get('id', "").lower() != capacity_reservation_group.id.lower():
+                            changed = True
+                            differences.append('capacity_reservation_group')
+                            self.capacity_reservation_group['id'] = capacity_reservation_group.id
+                    else:
+                        self.fail("Parameter error: Please recheck your capacity reservation group ")
+
                 self.differences = differences
 
             elif self.state == 'absent':
@@ -1783,6 +1841,17 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                             proximity_placement_group_resource = self.compute_models.SubResource(id=proximity_placement_group.id)
                         else:
                             self.fail("Parameter error: Please recheck your proximity placement group ")
+
+                    capacity_reservation_group_resource = None
+                    if self.capacity_reservation_group is not None:
+                        if self.capacity_reservation_group.get('id') is not None:
+                            capacity_reservation_group_resource = self.compute_models.SubResource(id=self.capacity_reservation_group['id'])
+                        elif self.capacity_reservation_group.get('name') is not None and self.capacity_reservation_group.get('resource_group') is not None:
+                            capacity_reservation_group = self.get_capacity_reservation_group(self.capacity_reservation_group.get('resource_group'),
+                                                                                             self.capacity_reservation_group.get('name'))
+                            capacity_reservation_group_resource = self.compute_models.SubResource(id=capacity_reservation_group.id)
+                        else:
+                            self.fail("Parameter error: Please recheck your capacity reservation group ")
 
                     # Get defaults
                     if not self.network_interface_names:
@@ -1866,6 +1935,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                         ),
                         availability_set=availability_set_resource,
                         proximity_placement_group=proximity_placement_group_resource,
+                        capacity_reservation=self.compute_models.CapacityReservationProfile(capacity_reservation_group=capacity_reservation_group_resource),
                         plan=plan,
                         zones=self.zones,
                     )
@@ -1965,41 +2035,49 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                         count = 0
 
                         for data_disk in self.data_disks:
-                            if not data_disk.get('managed_disk_type'):
-                                if not data_disk.get('storage_blob_name'):
-                                    data_disk['storage_blob_name'] = self.name + '-data-' + str(count) + '.vhd'
-                                    count += 1
+                            data_disk_vhd = None
+                            disk_name = None
 
-                                if data_disk.get('storage_account_name'):
-                                    data_disk_storage_account = self.get_storage_account(self.resource_group, data_disk['storage_account_name'])
-                                else:
-                                    data_disk_storage_account = self.create_default_storage_account()
-                                    self.log("data disk storage account:")
-                                    self.log(self.serialize_obj(data_disk_storage_account, 'StorageAccount'), pretty_print=True)
-
-                                if not data_disk.get('storage_container_name'):
-                                    data_disk['storage_container_name'] = 'vhds'
-
-                                data_disk_requested_vhd_uri = 'https://{0}.blob.{1}/{2}/{3}'.format(
-                                    data_disk_storage_account.name,
-                                    self._cloud_environment.suffixes.storage_endpoint,
-                                    data_disk['storage_container_name'],
-                                    data_disk['storage_blob_name']
-                                )
-
-                            if not data_disk.get('managed_disk_type'):
-                                data_disk_managed_disk = None
-                                disk_name = data_disk['storage_blob_name']
-                                data_disk_vhd = self.compute_models.VirtualHardDisk(uri=data_disk_requested_vhd_uri)
+                            if data_disk.get('managed_disk_id'):
+                                create_option = self.compute_models.DiskCreateOptionTypes.attach
+                                data_disk_managed_disk = self.compute_models.ManagedDiskParameters(id=data_disk.get('managed_disk_id'))
                             else:
-                                data_disk_vhd = None
-                                data_disk_managed_disk = self.compute_models.ManagedDiskParameters(storage_account_type=data_disk['managed_disk_type'])
-                                if data_disk.get('disk_encryption_set'):
-                                    data_disk_managed_disk.disk_encryption_set = self.compute_models.DiskEncryptionSetParameters(
-                                        id=data_disk['disk_encryption_set']
+                                create_option = self.compute_models.DiskCreateOptionTypes.empty
+
+                                if not data_disk.get('managed_disk_type'):
+                                    if not data_disk.get('storage_blob_name'):
+                                        data_disk['storage_blob_name'] = self.name + '-data-' + str(count) + '.vhd'
+                                        count += 1
+
+                                    if data_disk.get('storage_account_name'):
+                                        data_disk_storage_account = self.get_storage_account(self.resource_group, data_disk['storage_account_name'])
+                                    else:
+                                        data_disk_storage_account = self.create_default_storage_account()
+                                        self.log("data disk storage account:")
+                                        self.log(self.serialize_obj(data_disk_storage_account, 'StorageAccount'), pretty_print=True)
+
+                                    if not data_disk.get('storage_container_name'):
+                                        data_disk['storage_container_name'] = 'vhds'
+
+                                    data_disk_requested_vhd_uri = 'https://{0}.blob.{1}/{2}/{3}'.format(
+                                        data_disk_storage_account.name,
+                                        self._cloud_environment.suffixes.storage_endpoint,
+                                        data_disk['storage_container_name'],
+                                        data_disk['storage_blob_name']
                                     )
-                                disk_name = self.name + "-datadisk-" + str(count)
-                                count += 1
+
+                                if not data_disk.get('managed_disk_type'):
+                                    data_disk_managed_disk = None
+                                    disk_name = data_disk['storage_blob_name']
+                                    data_disk_vhd = self.compute_models.VirtualHardDisk(uri=data_disk_requested_vhd_uri)
+                                else:
+                                    data_disk_managed_disk = self.compute_models.ManagedDiskParameters(storage_account_type=data_disk['managed_disk_type'])
+                                    if data_disk.get('disk_encryption_set'):
+                                        data_disk_managed_disk.disk_encryption_set = self.compute_models.DiskEncryptionSetParameters(
+                                            id=data_disk['disk_encryption_set']
+                                        )
+                                    disk_name = self.name + "-datadisk-" + str(count)
+                                    count += 1
 
                             data_disk['caching'] = data_disk.get(
                                 'caching', 'ReadOnly'
@@ -2010,7 +2088,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                                 name=disk_name,
                                 vhd=data_disk_vhd,
                                 caching=data_disk['caching'],
-                                create_option=self.compute_models.DiskCreateOptionTypes.empty,
+                                create_option=create_option,
                                 disk_size_gb=data_disk['disk_size_gb'],
                                 managed_disk=data_disk_managed_disk,
                             ))
@@ -2090,6 +2168,20 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                             # pass if the proximity Placement Group
                             pass
 
+                    capacity_reservation_group_resource = None
+                    if self.capacity_reservation_group is not None:
+                        try:
+                            capacity_reservation_group_resource = self.compute_models.SubResource(id=self.capacity_reservation_group.get('id'))
+                        except Exception:
+                            # pass if the proximity Placement Group
+                            pass
+                    else:
+                        try:
+                            capacity_reservation_group_resource = self.compute_models.SubResource(id=vm_dict['capacity_reservation_group'].get('id'))
+                        except Exception:
+                            # pass if the proximity Placement Group
+                            pass
+
                     availability_set_resource = None
                     try:
                         availability_set_resource = self.compute_models.SubResource(id=vm_dict['availability_set'].get('id'))
@@ -2132,6 +2224,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                         ),
                         availability_set=availability_set_resource,
                         proximity_placement_group=proximity_placement_group_resource,
+                        capacity_reservation=self.compute_models.CapacityReservationProfile(capacity_reservation_group=capacity_reservation_group_resource),
                         network_profile=self.compute_models.NetworkProfile(
                             network_interfaces=nics
                         )
@@ -2374,7 +2467,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
             os_disk['managed_disk'] = dict(id=response.id)
             os_disk['create_option'] = response.creation_data.create_option
             return os_disk
-        except Exception as ec:
+        except Exception:
             self.fail('Could not find os disk {0} in resource group {1}'.format(os_disk_name, resource_group_name))
 
     def get_vm(self):
@@ -2697,9 +2790,38 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
                                                                       self.image['offer'],
                                                                       self.image['sku'],
                                                                       str(exc)))
+
         if versions and len(versions) > 0:
             if self.image['version'] == 'latest':
-                return versions[len(versions) - 1]
+                version = versions[len(versions) - 1]
+
+                def image_timestamp_to_datetime(version_string):
+                    version_len = len(version_string)
+                    if version_len == 8:
+                        t_format = "%Y%m%d"
+                    elif version_len <= 10:
+                        t_format = "%Y%m%d%H"
+                    elif version_len <= 12:
+                        t_format = "%Y%m%d%H%M"
+                    elif version_len <= 14:
+                        t_format = "%Y%m%d%H%M%S"
+                    return datetime.strptime(version_string, t_format)
+
+                if 8 <= len(version.name.split('.')[-1]) and len(version.name.split('.')[-1]) <= 14:
+                    version_date = image_timestamp_to_datetime(version.name.split('.')[-1])
+                    for item in versions:
+                        item_date = image_timestamp_to_datetime(item.name.split('.')[-1])
+                        if item_date > version_date:
+                            version = item
+                            version_date = item_date
+                else:
+                    version_name = version.name.split('.')[-1]
+                    for item in versions:
+                        item_name = item.name.split('.')[-1]
+                        if item_name > version_name:
+                            version = item
+                            version_name = item_name
+                return version
             for version in versions:
                 if version.name == self.image['version']:
                     return version
@@ -2726,6 +2848,12 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
 
         self.fail("Error could not find image with name {0}".format(name))
         return None
+
+    def get_capacity_reservation_group(self, resource_group, name):
+        try:
+            return self.compute_client.capacity_reservation_groups.get(resource_group, name)
+        except Exception as exc:
+            self.fail("Error fetching capacity reservation group {0} - {1}".format(name, str(exc)))
 
     def get_proximity_placement_group(self, resource_group, name):
         try:
@@ -2941,8 +3069,6 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
             pip = self.network_models.PublicIPAddress(id=pip_facts.id, location=pip_facts.location, resource_guid=pip_facts.resource_guid, sku=sku)
             self.tags['_own_pip_'] = self.name + '01'
 
-        self.tags['_own_nsg_'] = self.name + '01'
-
         parameters = self.network_models.NetworkInterface(
             location=self.location,
             ip_configurations=[
@@ -2961,6 +3087,7 @@ class AzureRMVirtualMachine(AzureRMModuleBase):
             parameters.network_security_group = self.network_models.NetworkSecurityGroup(id=group.id,
                                                                                          location=group.location,
                                                                                          resource_guid=group.resource_guid)
+            self.tags['_own_nsg_'] = self.name + '01'
 
         parameters.ip_configurations[0].public_ip_address = pip
 
